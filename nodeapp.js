@@ -1,11 +1,36 @@
 var express = require('express');
 var app = express();
 var mongoose = require('mongoose');
+var events = require('events');
+
+var eventEmitter = new events.EventEmitter();
+
 mongoose.connect('mongodb://localhost/test');
 mongoose.Promise = global.Promise;
 
 var User = mongoose.model('User', {login:String, pass:String, email:String});
 var Portfolio = mongoose.model('Portfolio', {name:String, value:Number, canView:Array});
+var UserSession = mongoose.model('UserSession', {sessionId:String, userName:String, state:String, created:Date, lastAccessed:Date});
+
+
+function newSession(loggedUserName) {
+    var newSessionId = generateSessionId();
+    var newUserSession = UserSession({sessionId:newSessionId, userName:loggedUserName, state:'a',created:new Date(),lastAccessed:new Date()});
+    newUserSession.save(function(err) {
+       if(err) {
+           console.log('Error while creating new session');
+       }
+       else {
+           console.log('new session created ' + newSessionId);
+       }        
+    });  
+}
+
+function generateSessionId() {
+    return new Buffer('s'+ (new Date().getTime())).toString('base64');
+}                                     
+
+newSession('user1121133123');
 
 function checkCredentials(authString) {
     if(authString) {
@@ -20,6 +45,7 @@ function checkCredentials(authString) {
         }
     }
 }
+
 
 function parseUserAndPass(authString) {
     var userAndPass = authString.split(" ")[1];
