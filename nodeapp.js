@@ -1,7 +1,6 @@
 var express = require('express');
 var cookieParser = require('cookie-parser');
 var mongoose = require('mongoose');
-var events = require('events');
 
 var app = express();
 app.use(cookieParser());
@@ -9,13 +8,12 @@ app.use(cookieParser());
 mongoose.connect('mongodb://localhost/test');
 mongoose.Promise = global.Promise;
 
-var User = mongoose.model('User', {login:String, pass:String, email:String});
-var Portfolio = mongoose.model('Portfolio', {name:String, value:Number, canView:Array});
-var UserSession = mongoose.model('UserSession', {sessionId:String, userName:String, state:String, created:Date, lastAccessed:Date});
+var User = mongoose.model('User', {login: String, pass: String, email: String});
+var Portfolio = mongoose.model('Portfolio', {name: String, value: Number, canView: Array});
+var UserSession = mongoose.model('UserSession', {sessionId: String, userName: String, state: String, created: Date, lastAccessed: Date});
 
 function parseUserAndPass(authString) {
-    var userAndPass = authString.split(" ")[1];
-    var decoded = new Buffer(userAndPass,'base64').toString().split(":");
+    var decoded = new Buffer(authString.split(" ")[1],'base64').toString().split(":");
     return {name:decoded[0],pass:decoded[1]};
 }
 
@@ -127,34 +125,9 @@ function sessionAuth(req, res,callback) {
 
 
 app.get('/', function (req, res) {
-  console.log('cookies:',req.cookies);       
   res.send('hello world');    
 });
 
-
-app.get('/add/login/:login/pass/:pass/email/:email', function(req,res) {
-    var newPerson  = new User({login:req.params.login,pass:req.params.pass, email:req.params.email});
-    newPerson.save(function(err) {
-        if(err) {
-            res.send(err);
-        }
-        else {
-            res.send('Zapisano');
-        }
-    });
-});
-
-app.get('/portfolio/add/:name/value/:value/canView/:canView',function(req,res) {
-    var newPortfolio  = new Portfolio({name:req.params.name,value:req.params.value,canView:req.params.canView.split(",")});
-    newPortfolio.save(function(err) {
-       if(err) {
-           res.send(err);
-       } 
-       else {
-           res.send('Zapisano');
-       }
-    });
-});
 
 app.get('/portfolio/:name',function(req,res) {
     sessionAuth(req,res, function(user) {
@@ -187,29 +160,37 @@ app.get('/getall',function(req,res) {
     });
 });
 
-app.get('/getall/:id', function(req,res) {
-    res.header('WWW-Authenticate', 'Basic');
-    res.status(401);
-    if(req.headers.authorization) {
-        authenticate(req.headers.authorization, function(err, user) {
-            if(err) {
-                res.send("Authorization failed" + JSON.stringify(err));
-            }
-            else {
-                res.status(200);
-                res.send(JSON.stringify(req.params));
-            }
-        });
-    } else {
-        res.send("Blad ");
-    }
-});
-
 
 app.get('/rest/logout', function(req,res) {
     res.header('WWW-Authenticate', 'Basic');
     res.status(401);
     res.send("Wylogowano");
+});
+
+
+//gets to create entities from browser (just for convenience)
+app.get('/add/login/:login/pass/:pass/email/:email', function(req,res) {
+    var newPerson  = new User({login:req.params.login,pass:req.params.pass, email:req.params.email});
+    newPerson.save(function(err) {
+        if(err) {
+            res.send(err);
+        }
+        else {
+            res.send('Zapisano');
+        }
+    });
+});
+
+app.get('/portfolio/add/:name/value/:value/canView/:canView',function(req,res) {
+    var newPortfolio  = new Portfolio({name:req.params.name,value:req.params.value,canView:req.params.canView.split(",")});
+    newPortfolio.save(function(err) {
+       if(err) {
+           res.send(err);
+       } 
+       else {
+           res.send('Zapisano');
+       }
+    });
 });
 
 app.listen(3000);
