@@ -1,7 +1,10 @@
 var express = require('express');
-var app = express();
+var cookieParser = require('cookie-parser');
 var mongoose = require('mongoose');
 var events = require('events');
+
+var app = express();
+app.use(cookieParser());
 
 var eventEmitter = new events.EventEmitter();
 
@@ -15,22 +18,75 @@ var UserSession = mongoose.model('UserSession', {sessionId:String, userName:Stri
 
 function newSession(loggedUserName) {
     var newSessionId = generateSessionId();
-    var newUserSession = UserSession({sessionId:newSessionId, userName:loggedUserName, state:'a',created:new Date(),lastAccessed:new Date()});
+    var newUserSession = new UserSession({sessionId:newSessionId, userName:loggedUserName, state:'a',created:new Date(),lastAccessed:new Date()});
+    console.log('newUserSession:',JSON.stringify(newUserSession));
+    var errorWhileCreating;
     newUserSession.save(function(err) {
        if(err) {
            console.log('Error while creating new session');
+           errorWhileCreating = err;
        }
        else {
            console.log('new session created ' + newSessionId);
+           console.log('newUserSession:',newUserSession);
        }        
-    });  
+    });
+    if(errorWhileCreating) {
+        throw new Error(errorWhileCreating);
+    }
+    return newUserSession;
+}
+
+function sessionAuth(req, res,callback) {
+    if(req.cookies.sessionId === undefined) {
+        res.header('WWW-Authenticate', 'Basic');
+        res.status(401);
+        if(req.headers.authorization) {
+            authenticate(req.headers.authorization, function(err,user) {
+                if(err) {
+                    console.log('error',err);
+                    res.send('Auth failed'); 
+                }
+                else {
+                    var session = newSession(user.login);
+                    console.log('session:', JSON.stringify(session));
+                    res.cookie('sessionId', session.sessionId, {maxAge:80000,httpOnly:true});
+                    callback(user);
+                }
+            });
+        }
+        else {
+            res.send('Auth failed'); 
+        }
+    }
+    else {
+        UserSession.findOne({sessionId:req.cookies.sessionId,state:'a'}).exec(function(err,userSession) {
+            if(err) {
+                console.log('Error while retrieving session');
+                res.send('Auth failed');
+            }
+            else {
+                User.findOne({login:userSession.userName}).exec(function(err,user) {
+                    if(err) {
+                        console.log('Error while retrieving user ' + userSession.userName);
+                        res.send('Auth failed'); 
+                    }
+                    else {
+                        res.cookie('sessionId', userSession.sessionId, {maxAge:80000,httpOnly:true});
+                        callback(user);
+                    }
+                });
+            }
+        }); 
+    }
+    
 }
 
 function generateSessionId() {
+    //'mnbvcxzqwertyuioplkjhgfdsa1234567890'.slice().charAt[]
     return new Buffer('s'+ (new Date().getTime())).toString('base64');
 }                                     
 
-newSession('user1121133123');
 
 function checkCredentials(authString) {
     if(authString) {
@@ -53,6 +109,8 @@ function parseUserAndPass(authString) {
     return {name:decoded[0],pass:decoded[1]};
 }
 
+
+
 function authenticate(authString, onCredentials) {
     var credentials = parseUserAndPass(authString);
     User.findOne({login:credentials.name}).exec(
@@ -73,7 +131,8 @@ function authenticate(authString, onCredentials) {
 }
 
 app.get('/', function (req, res) {
-  res.send('hello world');
+  console.log('cookies:',req.cookies);       
+  res.send('hello world');    
 });
 
 app.get('/add', function(req,res) {
@@ -114,35 +173,23 @@ app.get('/portfolio/add/:name/value/:value/canView/:canView',function(req,res) {
 });
 
 app.get('/portfolio/:name',function(req,res) {
-    res.header('WWW-Authenticate', 'Basic');
-    res.status(401);
-    if(req.headers.authorization) {
-        authenticate(req.headers.authorization, function(err, user) {
-            if(err) {
-                res.send('Authorization failed ' + err);
+    sessionAuth(req,res, function(user) {
+        Portfolio.findOne({name:req.params.name}).exec(
+            function(err,portfolio) {
+                if(err) {
+                    res.send('error! ' + err);
+                } else {
+                    if(portfolio.canView.indexOf(user.login) != -1) {
+                        res.status(200);
+                        res.send(JSON.stringify(portfolio));
+                    } else {
+                        res.status(401);
+                        res.send('Access denied for this resource');
+                    }   
+                }
             }
-            else {
-                Portfolio.findOne({name:req.params.name}).exec(
-                    function(err,portfolio) {
-                        if(err) {
-                            res.send('error! ' + err);
-                        } else {
-                            if(portfolio.canView.indexOf(user.login) != -1) {
-                                res.status(200);
-                                res.send(JSON.stringify(portfolio));
-                            } else {
-                                res.status(401);
-                                res.send('Access denied for this resource');
-                            }   
-                        }
-                    }
-                );      
-            }
-        });   
-    }
-    else {
-        res.send('Auth failed');
-    }
+        );
+    });
 });
 
 app.get('/getall',function(req,res) {
