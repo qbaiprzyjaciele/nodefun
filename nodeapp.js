@@ -6,8 +6,6 @@ var events = require('events');
 var app = express();
 app.use(cookieParser());
 
-var eventEmitter = new events.EventEmitter();
-
 mongoose.connect('mongodb://localhost/test');
 mongoose.Promise = global.Promise;
 
@@ -15,6 +13,15 @@ var User = mongoose.model('User', {login:String, pass:String, email:String});
 var Portfolio = mongoose.model('Portfolio', {name:String, value:Number, canView:Array});
 var UserSession = mongoose.model('UserSession', {sessionId:String, userName:String, state:String, created:Date, lastAccessed:Date});
 
+function parseUserAndPass(authString) {
+    var userAndPass = authString.split(" ")[1];
+    var decoded = new Buffer(userAndPass,'base64').toString().split(":");
+    return {name:decoded[0],pass:decoded[1]};
+}
+
+function generateSessionId() {
+    return new Buffer('s'+ (new Date().getTime())).toString('base64');
+}
 
 function newSession(loggedUserName) {
     var newSessionId = generateSessionId();
@@ -37,9 +44,32 @@ function newSession(loggedUserName) {
     return newUserSession;
 }
 
-function sessionAuth(req, res,callback) {
-    if(req.cookies.sessionId === undefined) {
-        res.header('WWW-Authenticate', 'Basic');
+
+function authenticate(authString, onCredentials) {
+    var credentials = parseUserAndPass(authString);
+    User.findOne({login:credentials.name}).exec(
+        function(err,returnedUser) {
+            if(err) {
+                onCredentials({message:"Error while retiriveing user " + err});
+            }
+            else if(returnedUser) {
+                if(credentials.pass == returnedUser.pass) {
+                    onCredentials(null,  returnedUser);   
+                }
+                else {
+                    onCredentials({message:"User found, but authentication failed"});
+                }
+            }
+            else {
+                onCredentials({message:"User not found " + err});
+            }
+        }
+        
+    );   
+}
+
+function basicAuthCreateSession(req,res,callback) {
+    res.header('WWW-Authenticate', 'Basic');
         res.status(401);
         if(req.headers.authorization) {
             authenticate(req.headers.authorization, function(err,user) {
@@ -51,13 +81,19 @@ function sessionAuth(req, res,callback) {
                     var session = newSession(user.login);
                     console.log('session:', JSON.stringify(session));
                     res.cookie('sessionId', session.sessionId, {maxAge:80000,httpOnly:true});
+                    res.header('WWW-Authenticate', 'Basic');
                     callback(user);
                 }
             });
         }
         else {
             res.send('Auth failed'); 
-        }
+        }  
+}
+
+function sessionAuth(req, res,callback) {
+    if(req.cookies.sessionId === undefined) {
+        basicAuthCreateSession(req,res,callback);
     }
     else {
         UserSession.findOne({sessionId:req.cookies.sessionId,state:'a'}).exec(function(err,userSession) {
@@ -65,86 +101,34 @@ function sessionAuth(req, res,callback) {
                 console.log('Error while retrieving session');
                 res.send('Auth failed');
             }
+            else if(userSession) {
+                    User.findOne({login:userSession.userName}).exec(function(err,user) {
+                        if(err) {
+                            console.log('Error while retrieving user ' + userSession.userName);
+                            res.send('Auth failed'); 
+                        }
+                        else if(user) { 
+                            res.cookie('sessionId', userSession.sessionId, {maxAge:80000,httpOnly:true});
+                            callback(user);
+                        }
+                        else {
+                            res.send('User not found');
+                        }
+                    });
+            }
             else {
-                User.findOne({login:userSession.userName}).exec(function(err,user) {
-                    if(err) {
-                        console.log('Error while retrieving user ' + userSession.userName);
-                        res.send('Auth failed'); 
-                    }
-                    else {
-                        res.cookie('sessionId', userSession.sessionId, {maxAge:80000,httpOnly:true});
-                        callback(user);
-                    }
-                });
+                //session may be no longer active
+                basicAuthCreateSession(req,res,callback);    
             }
         }); 
     }
-    
-}
-
-function generateSessionId() {
-    //'mnbvcxzqwertyuioplkjhgfdsa1234567890'.slice().charAt[]
-    return new Buffer('s'+ (new Date().getTime())).toString('base64');
-}                                     
-
-
-function checkCredentials(authString) {
-    if(authString) {
-        var userAndPass = authString.split(" ")[1];
-        console.log("userAndPass = " + userAndPass);
-        var decoded = new Buffer(userAndPass,'base64').toString().split(":");
-        if(decoded[0]=='kuba' && decoded[1] =='lololol') {
-            return true;
-        }
-        else {
-            return false;
-        }
-    }
 }
 
 
-function parseUserAndPass(authString) {
-    var userAndPass = authString.split(" ")[1];
-    var decoded = new Buffer(userAndPass,'base64').toString().split(":");
-    return {name:decoded[0],pass:decoded[1]};
-}
-
-
-
-function authenticate(authString, onCredentials) {
-    var credentials = parseUserAndPass(authString);
-    User.findOne({login:credentials.name}).exec(
-        function(err,returnedUser) {
-            if(err) {
-                onCredentials({message:"Error while retiriveing user " + err});
-            }
-            else {
-                if(credentials.pass == returnedUser.pass) {
-                    onCredentials(null,  returnedUser);   
-                }
-                else {
-                    onCredentials({message:"User found, but authentication failed"});
-                }
-            }
-        }
-    );   
-}
 
 app.get('/', function (req, res) {
   console.log('cookies:',req.cookies);       
   res.send('hello world');    
-});
-
-app.get('/add', function(req,res) {
-    var newPerson  = new User({login:"adamm",pass:"adasd8y3r4raw3ra7fg", email:"miauczek64@wp.pl"});
-    newPerson.save(function(err) {
-        if(err) {
-            res.send(err);
-        }
-        else {
-            res.send('Zapisano');
-        }
-    });
 });
 
 
@@ -218,21 +202,6 @@ app.get('/getall/:id', function(req,res) {
         });
     } else {
         res.send("Blad ");
-    }
-    
-});
-
-
-app.get('/getall/:id/servers/:name', function(req,res) {
-    console.log( JSON.stringify(req.params));
-    res.header('WWW-Authenticate', 'Basic');
-    res.status(401);
-    console.log(JSON.stringify(req.headers));
-    if(checkCredentials(req.headers.authorization)) {
-        res.status(200);
-        res.send(JSON.stringify(req.params));
-    } else {
-        res.send('No auth');
     }
 });
 
