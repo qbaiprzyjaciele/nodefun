@@ -1,0 +1,42 @@
+<html>
+	<head>
+		<title>index</title>
+		<script type="text/javascript" src="jquery-3.2.0.min.js"/></script>
+	</head>
+	
+
+	<script>
+		function getAndAdd() {
+			$.getJSON('http://localhost:3001/api/entries', function(data) {
+				console.log(JSON.stringify(data));	
+				for(var i = 0; i< data.length; i++) {
+					$('#people').append('<tr><td>' + data[i].id + '</td><td> ' + data[i].name + '</td><td>' + data[i].lastName + '</td><td><button onclick="getDetails('+ data[i].id + ')">details</button></td></tr>');
+				}
+			
+			});
+		}
+
+		function getDetails(id) {
+			$.getJSON('http://localhost:3001/api/person/' + id + '/details', function(data) {
+				console.log(JSON.stringify(data));
+				document.getElementById('name').innerHTML = data.name;
+				document.getElementById('lastName').innerHTML = data.lastName;
+				document.getElementById('proffession').innerHTML = data.proffession;
+				document.getElementById('age').innerHTML = data.age;
+			});
+		}	
+	</script>
+	<body>
+		<h1>Hello index</h1>	
+		<button name="lol" onclick="getAndAdd()">click me </button>
+		<table id="people">`
+		</table>
+		<br>
+		<div id="details">
+			Name: <p id="name"></p> <br>
+			Last name: <p id="lastName"></p><br>
+			Age: <p id="age"></p><br>
+			Profession: <p id="proffession"></p><br>
+		</div>
+	</body>
+</html>
