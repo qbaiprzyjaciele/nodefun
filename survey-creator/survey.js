@@ -1,15 +1,14 @@
 var express = require('express');
 var mongoose  = require('mongoose');
-var app = express();
 var bodyparser = require('body-parser');
+
+var app = express();
 
 app.use(bodyparser.json());
 app.use(bodyparser.urlencoded({extended:true}));
 
 mongoose.connect('mongodb://localhost/test');
 mongoose.Promise = global.Promise;
-
-console.log('express registered...');
 
 var Survey = mongoose.model('Survey',{title:String,hash:String,owner:String,questions:Array});
 	
