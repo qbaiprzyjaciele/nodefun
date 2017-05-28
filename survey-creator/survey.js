@@ -21,10 +21,19 @@ app.get('/all', function(req,res) {
 	});
 });
 
-app.post('/post', function(req,res) {
-	console.log('name:' + req.body.name + ',lastName:' + req.body.lastName);
-	console.log('anotherPerson:' + req.body.anotherPerson);
-	res.send('Ok');
+app.post('/api/survey/add', function(req,res) {
+	var sentSurvey = JSON.parse(req.body.survey);
+	var survey = new Survey({title:sentSurvey.title, hash:hashGen, owner:sentSurvey.owner, questions:sentSurvey.questions});
+	survey.save(function(err) {
+		if(err) res.status(500).send('Error while saving newSurvey');
+		else {
+			res.status(200).send('ok');
+		}
+	});
 });
+
+var hashGen = function() {
+	return new Buffer(['a','b','D','x','Y','t','O','r','v','l','p'][Math.floor(Math.random() * 10)] + new Date().getMilliseconds()).toString('base64');
+}
 
 app.listen(3000);
